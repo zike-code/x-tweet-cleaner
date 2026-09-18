@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>X Tweet Cleaner</title>
+<style>
+  :root{
+    --bg:#0b0e13; --panel:#141922; --panel2:#1b2230; --line:#28303e;
+    --txt:#e6eaf2; --dim:#8b95a7; --acc:#4da3ff; --ok:#3ddc97; --warn:#ffb454; --err:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 ui-sans-serif,system-ui,"Segoe UI",sans-serif}
+  header{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  h1{font-size:17px;margin:0;font-weight:650;letter-spacing:.2px}
+  .tag{font-size:11px;padding:3px 9px;border-radius:99px;background:var(--panel2);color:var(--dim);border:1px solid var(--line)}
+  .wrap{display:grid;grid-template-columns:400px 1fr;gap:18px;padding:18px 22px;align-items:start}
+  @media(max-width:980px){.wrap{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+  .card h2{font-size:13px;margin:0 0 12px;text-transform:uppercase;letter-spacing:.7px;color:var(--dim);font-weight:600}
+  label{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px}
+  input[type=text],input[type=number],input[type=date],textarea{
+    width:100%;background:var(--bg);border:1px solid var(--line);color:var(--txt);
+    border-radius:8px;padding:8px 10px;font:12px/1.4 ui-monospace,Consolas,monospace}
+  textarea{resize:vertical;min-height:54px}
+  input:focus,textarea:focus{outline:none;border-color:var(--acc)}
+  .row{display:flex;gap:10px}.row>*{flex:1}
+  .chk{display:flex;align-items:center;gap:8px;margin:8px 0;font-size:13px;color:var(--txt)}
+  .chk input{accent-color:var(--acc);width:16px;height:16px}
+  button{background:var(--acc);color:#04121f;border:0;border-radius:8px;padding:10px 14px;
+    font-weight:650;font-size:13px;cursor:pointer;transition:.15s}
+  button:hover{filter:brightness(1.1)} button:disabled{opacity:.4;cursor:not-allowed}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--txt)}
+  .btns{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+  .acct{display:flex;align-items:center;gap:10px;padding:10px;background:var(--panel2);border-radius:8px}
+  .acct b{font-size:15px}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .stat{background:var(--panel2);border-radius:9px;padding:10px;text-align:center}
+  .stat .n{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+  .stat .l{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
+  #log{background:#080b10;border:1px solid var(--line);border-radius:10px;padding:10px;
+    height:min(52vh,520px);overflow:auto;font:11.5px/1.65 ui-monospace,Consolas,monospace}
+  #log div{white-space:pre-wrap;word-break:break-word}
+  .t{color:#55617a;margin-right:6px}
+  .lv-warn{color:var(--warn)} .lv-error{color:var(--err)}
+  .phase{font-size:12px;padding:4px 10px;border-radius:99px;font-weight:600}
+  .p-idle{background:#232b39;color:var(--dim)} .p-scanning{background:#123a5c;color:#7cc6ff}
+  .p-deleting{background:#3d2411;color:var(--warn)} .p-paused{background:#3d1111;color:var(--err)}
+  .queue{max-height:200px;overflow:auto;font:11px/1.6 ui-monospace,Consolas,monospace;color:var(--dim)}
+  .queue div{padding:2px 0;border-bottom:1px solid #1a212c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .empty{color:#55617a}
+  .hint{font-size:11px;color:var(--dim);margin-top:6px}
+</style>
+</head>
+<body>
+<header>
+  <h1>X Tweet Cleaner</h1>
+  <span class="tag">local · 127.0.0.1</span>
+  <span id="phase" class="phase p-idle">idle</span>
+  <span id="pauseinfo" class="tag" style="display:none"></span>
+</header>
+
+<div class="wrap">
+  <div>
+    <div class="card">
+      <h2>1 · Session</h2>
+      <div id="acctBox" style="display:none" class="acct">
+        <div>
+          <b id="acctName"></b>
+          <div class="hint" id="acctMeta"></div>
+        </div>
+      </div>
+      <div id="loginBox">
+        <label>auth_token</label>
+        <input type="text" id="auth_token" placeholder="auth_token cookie">
+        <label>ct0</label>
+        <input type="text" id="ct0" placeholder="ct0 cookie (csrf)">
+        <label>user-agent (optional)</label>
+        <input type="text" id="ua" placeholder="leave empty for the default">
+        <div class="chk"><input type="checkbox" id="remember"><label for="remember" style="margin:0">save to data/creds.json</label></div>
+        <div class="btns"><button id="btnLogin">Connect account</button></div>
+      </div>
+      <div class="btns" id="logoutBtns" style="display:none">
+        <button class="ghost" id="btnForget">Forget credentials</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>2 · What to delete</h2>
+      <div class="chk"><input type="checkbox" id="includeReplies" checked><label for="includeReplies" style="margin:0">include replies</label></div>
+      <div class="chk"><input type="checkbox" id="includeRetweets" checked><label for="includeRetweets" style="margin:0">include retweets (undoes the RT)</label></div>
+      <div class="chk"><input type="checkbox" id="continuous" checked><label for="continuous" style="margin:0">rescan until the timeline is empty</label></div>
+      <div class="row">
+        <div><label>from (date)</label><input type="date" id="dateFrom"></div>
+        <div><label>to (date)</label><input type="date" id="dateTo"></div>
+      </div>
+      <div class="hint">Leave both dates empty to delete everything.</div>
+      <label>ids to keep (one per line)</label>
+      <textarea id="keepIds" placeholder="1234567890123456789"></textarea>
+    </div>
+
+    <div class="card">
+      <h2>3 · Pace</h2>
+      <div class="row">
+        <div><label>base delay (ms)</label><input type="number" id="delayMs" value="1500" min="300" step="100"></div>
+        <div><label>jitter (ms)</label><input type="number" id="jitterMs" value="700" min="0" step="100"></div>
+      </div>
+      <div class="row">
+        <div><label>delete limit (0 = none)</label><input type="number" id="maxDeletes" value="0" min="0"></div>
+        <div><label>pages per scan (0 = all)</label><input type="number" id="maxScanPages" value="0" min="0"></div>
+      </div>
+      <div class="chk" style="margin-top:12px"><input type="checkbox" id="dryRun" checked><label for="dryRun" style="margin:0"><b>dry run</b> (deletes nothing)</label></div>
+      <div class="btns">
+        <button id="btnStart">Start</button>
+        <button class="ghost" id="btnStop" disabled>Stop</button>
+      </div>
+      <div class="hint">Only turn off the dry run once you have seen the list. <b>Deletion cannot be undone.</b></div>
+    </div>
+
+    <div class="card">
+      <h2>Extra</h2>
+      <label>import official archive (tweets.js)</label>
+      <input type="text" id="archivePath" placeholder="C:\path\to\archive\data\tweets.js">
+      <div class="btns">
+        <button class="ghost" id="btnImport">Import into queue</button>
+        <button class="ghost" id="btnReset">Reset progress</button>
+      </div>
+      <div class="hint">The API only returns the ~3200 most recent posts. For larger accounts, request your archive under Settings → Your account → Download an archive of your data.</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>Progress</h2>
+      <div class="stats">
+        <div class="stat"><div class="n" id="sDel">0</div><div class="l">deleted</div></div>
+        <div class="stat"><div class="n" id="sRt">0</div><div class="l">RTs undone</div></div>
+        <div class="stat"><div class="n" id="sFail">0</div><div class="l">failed</div></div>
+        <div class="stat"><div class="n" id="sQueue">0</div><div class="l">queued</div></div>
+      </div>
+      <div class="hint" id="scanInfo"></div>
+    </div>
+
+    <div class="card">
+      <h2>Queue (first 40)</h2>
+      <div class="queue" id="queue"></div>
+    </div>
+
+    <div class="card">
+      <h2>Log</h2>
+      <div id="log"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const logEl = $('log');
+
+function addLog(line){
+  const row = document.createElement('div');
+  row.className = 'lv-' + line.level;
+  const ts = document.createElement('span');
+  ts.className = 't';
+  ts.textContent = new Date(line.t).toLocaleTimeString();
+  row.appendChild(ts);
+  row.appendChild(document.createTextNode(line.msg));
+  const atBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 40;
+  logEl.appendChild(row);
+  while (logEl.children.length > 1500) logEl.removeChild(logEl.firstChild);
+  if (atBottom) logEl.scrollTop = logEl.scrollHeight;
+}
+
+function emptyRow(text){
+  const d = document.createElement('div');
+  d.className = 'empty';
+  d.textContent = text;
+  return d;
+}
+
+function renderState(s){
+  const labels = { idle:'idle', scanning:'scanning', deleting:'deleting', paused:'paused' };
+  const p = $('phase');
+  p.textContent = labels[s.phase] || s.phase;
+  p.className = 'phase p-' + s.phase;
+
+  $('sDel').textContent = s.stats.deleted;
+  $('sRt').textContent = s.stats.unretweeted;
+  $('sFail').textContent = s.stats.failed;
+  $('sQueue').textContent = s.queueLength;
+  $('scanInfo').textContent = 'items seen: ' + s.stats.scanned + ' · filtered out: ' + s.stats.skipped
+    + (s.lastError ? ' · last error: ' + s.lastError : '');
+
+  if (s.account){
+    $('acctBox').style.display = 'flex';
+    $('loginBox').style.display = 'none';
+    $('logoutBtns').style.display = 'flex';
+    $('acctName').textContent = '@' + s.account.screen_name;
+    $('acctMeta').textContent = s.account.name + ' · id ' + s.account.user_id + ' · '
+      + (s.account.statuses_count === null ? '?' : s.account.statuses_count) + ' posts';
+  } else {
+    $('acctBox').style.display = 'none';
+    $('loginBox').style.display = 'block';
+    $('logoutBtns').style.display = 'none';
+  }
+
+  $('btnStart').disabled = s.phase !== 'idle' || !s.account;
+  $('btnStop').disabled = s.phase === 'idle';
+
+  if (s.pausedUntil > Date.now()){
+    $('pauseinfo').style.display = 'inline-block';
+    $('pauseinfo').textContent = 'resumes in ' + Math.ceil((s.pausedUntil - Date.now())/1000) + 's';
+  } else $('pauseinfo').style.display = 'none';
+
+  const q = $('queue');
+  q.replaceChildren();
+  if (!s.queuePreview.length){ q.appendChild(emptyRow('empty')); }
+  for (const t of s.queuePreview){
+    const d = document.createElement('div');
+    d.textContent = (t.is_retweet ? '[RT] ' : t.is_reply ? '[re] ' : '[tw] ') + t.id + '  ' + t.text;
+    q.appendChild(d);
+  }
+}
+
+const es = new EventSource('/api/events');
+es.onmessage = e => {
+  const m = JSON.parse(e.data);
+  if (m.type === 'log') addLog(m.line);
+  if (m.type === 'state') renderState(m.state);
+};
+
+async function post(url, body){
+  const r = await fetch(url, { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body||{}) });
+  const j = await r.json().catch(()=>({}));
+  if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  return j;
+}
+
+function collectOptions(){
+  return {
+    includeReplies: $('includeReplies').checked,
+    includeRetweets: $('includeRetweets').checked,
+    continuous: $('continuous').checked,
+    dryRun: $('dryRun').checked,
+    delayMs: Number($('delayMs').value) || 1500,
+    jitterMs: Number($('jitterMs').value) || 0,
+    maxDeletes: Number($('maxDeletes').value) || 0,
+    maxScanPages: Number($('maxScanPages').value) || 0,
+    dateFrom: $('dateFrom').value,
+    dateTo: $('dateTo').value,
+    keepIds: $('keepIds').value.split(/[\s,]+/).filter(Boolean),
+  };
+}
+
+$('btnLogin').onclick = async () => {
+  try {
+    await post('/api/login', {
+      auth_token: $('auth_token').value.trim(),
+      ct0: $('ct0').value.trim(),
+      ua: $('ua').value.trim(),
+      remember: $('remember').checked,
+    });
+  } catch(e){ alert('Failed: ' + e.message); }
+};
+
+$('btnStart').onclick = async () => {
+  const o = collectOptions();
+  if (!o.dryRun){
+    const acc = $('acctName').textContent;
+    if (!confirm('This will PERMANENTLY delete posts from ' + acc + '.\n\nThere is no undo. Continue?')) return;
+    if (prompt('Type DELETE to confirm:') !== 'DELETE') return;
+  }
+  try { await post('/api/options', o); await post('/api/start'); }
+  catch(e){ alert('Failed: ' + e.message); }
+};
+
+$('btnStop').onclick = () => post('/api/stop').catch(()=>{});
+$('btnForget').onclick = () => post('/api/forget').catch(()=>{});
+$('btnReset').onclick = () => { if (confirm('Reset the saved progress?')) post('/api/reset-progress'); };
+$('btnImport').onclick = async () => {
+  try {
+    await post('/api/options', collectOptions());
+    const r = await post('/api/import', { path: $('archivePath').value.trim() });
+    alert(r.added + ' items added to the queue (out of ' + r.total + ' in the file).');
+  } catch(e){ alert('Failed: ' + e.message); }
+};
+
+setInterval(() => fetch('/api/state').then(r=>r.json()).then(renderState).catch(()=>{}), 4000);
+</script>
+</body>
+</html>

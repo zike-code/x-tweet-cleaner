@@ -1,0 +1,14 @@
+{
+  "name": "x-tweet-cleaner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bulk-delete the posts on your own X account from a local web UI, with a dry run, filters and resume.",
+  "license": "MIT",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
